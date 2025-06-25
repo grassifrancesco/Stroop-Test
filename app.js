@@ -54,6 +54,10 @@ io.on('connection', (socket) => {
       io.emit('finalRanking', finishOrder);
       finishOrder.length = 0;
     }
+
+    player[socket.id].finito = true;
+    players[socket.id].iniziato = false;
+    io.emit('updatePlayers', players);
   });
 
   socket.on('playerReady', () => {

@@ -13,6 +13,15 @@
       color: #333;
     }
 
+    #mainScreen {
+      display: block;
+      margin-top: 80px;
+    }
+
+    #gameScreen {
+      display: none;
+    }
+
     #word {
       font-size: 64px;
       margin-bottom: 30px;
@@ -102,20 +111,24 @@
 </head>
 
 <body>
-  <input type="text" id="nameInput" placeholder="Inserisci il tuo nome"
-    style="font-size: 24px; padding: 10px; width: 300px; margin-bottom: 20px;">
-  <button id="startBtn" class="btn">Inizia il Test</button>
-  <div id="word">ROSSO</div>
-  <button id="trueBtn" class="btn">VERO</button>
-  <button id="falseBtn" class="btn">FALSO</button>
+  <div id="mainScreen">
+    <input type="text" id="nameInput" placeholder="Inserisci il tuo nome"
+      style="font-size: 24px; padding: 10px; width: 300px; margin-bottom: 20px;">
+    <br>
+    <button id="startBtn" class="btn">Inizia il Test</button>
+    <div id="mainResult" style="margin-top:20px;font-size:22px;"></div>
+  </div>
 
-  <div id="result"></div>
-  <div id="score"></div>
-  <div id="timer"></div>
-
-  <button id="restart">🔁 Ricomincia</button>
-
-  <div id="detailedResults"></div>
+  <div id="gameScreen">
+    <div id="word"></div>
+    <button id="trueBtn" class="btn">VERO</button>
+    <button id="falseBtn" class="btn">FALSO</button>
+    <div id="result"></div>
+    <div id="score"></div>
+    <div id="timer"></div>
+    <button id="restart">🔁 Ricomincia</button>
+    <div id="detailedResults"></div>
+  </div>
 
   <div id="playerCount" style="position:fixed;top:16px;right:32px;font-size:22px;font-weight:bold;color:#1976d2;z-index:1000;">
     👥 0
@@ -147,7 +160,9 @@
 
     const nameInput = document.getElementById("nameInput");
     const startBtn = document.getElementById("startBtn");
-
+    const mainScreen = document.getElementById("mainScreen");
+    const mainResult = document.getElementById("mainResult");
+    const gameScreen = document.getElementById("gameScreen");
     const wordElement = document.getElementById("word");
     const result = document.getElementById("result");
     const score = document.getElementById("score");
@@ -155,27 +170,39 @@
     const restartButton = document.getElementById("restart");
     const detailedResults = document.getElementById("detailedResults");
     const playerCountDisplay = document.getElementById("playerCount");
-
     const trueBtn = document.getElementById("trueBtn");
     const falseBtn = document.getElementById("falseBtn");
 
     let currentWord = "";
     let currentColor = "";
-
     const maxQuestions = 20;
     let questionCount = 0;
-
     const timeLimit = 3;
     let timeLeft = timeLimit;
     let timerInterval = null;
     let questionStartTime = 0;
-
     let responseTimes = [];
-
     const players = {};
     let player = null;
-
     let allReady = false;
+
+    function showMainScreen() {
+      mainScreen.style.display = "block";
+      gameScreen.style.display = "none";
+      wordElement.style.display = "none";
+      trueBtn.style.display = "none";
+      falseBtn.style.display = "none";
+    }
+
+    function showGameScreen() {
+      mainScreen.style.display = "none";
+      gameScreen.style.display = "block";
+      wordElement.style.display = "block";
+      trueBtn.style.display = "inline-block";
+      falseBtn.style.display = "inline-block";
+    }
+
+    showMainScreen();
 
     socket.on('updatePlayers', (backendPlayers) => {
       for (const id in backendPlayers) {
@@ -189,9 +216,7 @@
           delete players[id];
         }
       }
-
       playerCountDisplay.textContent = `👥 ${Object.keys(backendPlayers).length}`;
-      console.log("GIOCATORI TOTALI: ", Object.keys(backendPlayers).length);
     });
 
     function syncPlayers() {
@@ -210,14 +235,18 @@
         players[socket.id] = player;
         socket.emit('newPlayer', { id: socket.id, name: playerName });
         player.iniziato = true;
+        player.finito = false;
         socket.emit('playerReady');
-        nameInput.style.display = "none";
-        startBtn.style.display = "none";
+        mainScreen.style.display = "none";
+        gameScreen.style.display = "block";
+        wordElement.style.display = "none";
+        trueBtn.style.display = "none";
+        falseBtn.style.display = "none";
         result.textContent = "In attesa che tutti i giocatori siano pronti...";
         result.style.color = "#1976d2";
       } else {
-        result.textContent = "Per favore, inserisci il tuo nome.";
-        result.style.color = "red";
+        mainResult.textContent = "Per favore, inserisci il tuo nome.";
+        mainResult.style.color = "red";
       }
     });
 
@@ -226,6 +255,7 @@
       result.textContent = "Tutti i giocatori sono pronti! Il test inizia.";
       result.style.color = "green";
       setTimeout(() => {
+        showGameScreen();
         startGame();
       }, 1000);
     });
@@ -242,9 +272,7 @@
           delete players[id];
         }
       }
-
       playerCountDisplay.textContent = `👥 ${Object.keys(backendPlayers).length}`;
-      console.log("GIOCATORI TOTALI: ", Object.keys(backendPlayers).length);
       if (player && player.iniziato && !allReady) {
         result.textContent = "In attesa che tutti i giocatori siano pronti...";
         result.style.color = "#1976d2";
@@ -252,37 +280,34 @@
     });
 
     function startGame() {
-      if (!player || !player.name) {
+      if (!player.name) {
         result.textContent = "Devi prima inserire il tuo nome!";
         result.style.color = "red";
         return;
       }
-      
       player.correctAnswers = 0;
       player.wrongAnswers = 0;
       player.questionCount = 0;
       player.responseTimes = [];
       player.iniziato = true;
       player.finito = false;
-
       restartButton.style.display = "none";
       detailedResults.innerHTML = "";
       trueBtn.disabled = false;
       falseBtn.disabled = false;
-
+      wordElement.style.display = "block";
+      trueBtn.style.display = "inline-block";
+      falseBtn.style.display = "inline-block";
       nextQuestion();
     }
 
     function startTimer() {
       timeLeft = timeLimit;
       timerDisplay.textContent = `⏳ Tempo: ${timeLeft}s`;
-
       questionStartTime = Date.now();
-
       timerInterval = setInterval(() => {
         timeLeft--;
         timerDisplay.textContent = `⏳ Tempo: ${timeLeft}s`;
-
         if (timeLeft <= 0) {
           clearInterval(timerInterval);
           registerAnswer(false, true);
@@ -295,16 +320,12 @@
         endGame();
         return;
       }
-
       player.questionCount++;
       result.textContent = "";
-
       currentWord = colors[Math.floor(Math.random() * colors.length)];
       currentColor = colors[Math.floor(Math.random() * colors.length)];
-
       wordElement.textContent = currentWord.toUpperCase();
       wordElement.style.color = colorValues[currentColor];
-
       updateScore();
       clearInterval(timerInterval);
       startTimer();
@@ -320,7 +341,6 @@
     function registerAnswer(isCorrect, timeout) {
       const timeTaken = Math.min(((Date.now() - questionStartTime) / 1000).toFixed(2), 3.00);
       player.responseTimes.push(parseFloat(timeTaken));
-
       if (isCorrect) {
         player.correctAnswers++;
         result.textContent = "✅ Corretto!";
@@ -330,7 +350,6 @@
         result.textContent = timeout ? "⏱ Tempo scaduto!" : "❌ Sbagliato!";
         result.style.color = "red";
       }
-
       updateScore();
       setTimeout(nextQuestion, 1000);
     }
@@ -341,8 +360,8 @@
 
     function endGame() {
       player.finito = true;
+      player.iniziato = false;
       socket.emit('endGame', player);
-
       wordElement.textContent = "Test completato!";
       result.textContent = `Hai risposto correttamente a ${player ? player.correctAnswers : 0} su ${maxQuestions}.`;
       result.style.color = "blue";
@@ -350,19 +369,16 @@
       trueBtn.disabled = true;
       falseBtn.disabled = true;
       restartButton.style.display = "inline-block";
-
       showDetailedResults();
     }
 
     function showDetailedResults() {
       let html = "<h3>📊 Risultati dettagliati</h3><ul style='list-style:none;padding:0'>";
       let sum = 0;
-
       player.responseTimes.forEach((time, index) => {
         html += `<li>Domanda ${index + 1}: ${time}s</li>`;
         sum += time;
       });
-
       const avg = (sum / player.responseTimes.length).toFixed(2);
       html += `</ul><p><strong>⏱ Tempo medio di risposta: ${avg}s</strong></p>`;
       detailedResults.innerHTML = html;
@@ -380,7 +396,18 @@
 
     trueBtn.addEventListener("click", () => handleUserAnswer(true));
     falseBtn.addEventListener("click", () => handleUserAnswer(false));
-    restartButton.addEventListener("click", startGame());
+    restartButton.addEventListener("click", () => {
+      player.iniziato = true;
+      player.finito = false;
+      socket.emit('playerReady');
+      mainScreen.style.display = "none";
+      gameScreen.style.display = "block";
+      wordElement.style.display = "none";
+      trueBtn.style.display = "none";
+      falseBtn.style.display = "none";
+      result.textContent = "In attesa che tutti i giocatori siano pronti...";
+      result.style.color = "#1976d2";
+    });
   </script>
 </body>
 
