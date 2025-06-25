@@ -55,9 +55,11 @@ io.on('connection', (socket) => {
       finishOrder.length = 0;
     }
 
-    player[socket.id].finito = true;
-    players[socket.id].iniziato = false;
-    io.emit('updatePlayers', players);
+    if (players[socket.id]) {
+      players[socket.id].finito = true;
+      players[socket.id].iniziato = false;
+      io.emit('updatePlayers', players);
+    }
   });
 
   socket.on('playerReady', () => {
