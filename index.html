@@ -102,7 +102,8 @@
 </head>
 
 <body>
-  <input type="text" id="nameInput" placeholder="Inserisci il tuo nome" style="font-size: 24px; padding: 10px; width: 300px; margin-bottom: 20px;">
+  <input type="text" id="nameInput" placeholder="Inserisci il tuo nome"
+    style="font-size: 24px; padding: 10px; width: 300px; margin-bottom: 20px;">
   <button id="startBtn" class="btn">Inizia il Test</button>
   <div id="word">ROSSO</div>
   <button id="trueBtn" class="btn">VERO</button>
@@ -116,6 +117,10 @@
 
   <div id="detailedResults"></div>
 
+  <div id="playerCount" style="position:fixed;top:16px;right:32px;font-size:22px;font-weight:bold;color:#1976d2;z-index:1000;">
+    👥 0
+  </div>
+
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script>
     class Player {
@@ -123,11 +128,13 @@
         this.name = name;
         this.correctAnswers = 0;
         this.wrongAnswers = 0;
+        this.iniziato = false;
         this.finito = false;
+        this.responseTimes = [];
+        this.questionCount = 0;
       }
     }
-  </script>
-  <script>
+
     const socket = io();
 
     const colors = ["rosso", "verde", "blu", "giallo"];
@@ -147,6 +154,7 @@
     const timerDisplay = document.getElementById("timer");
     const restartButton = document.getElementById("restart");
     const detailedResults = document.getElementById("detailedResults");
+    const playerCountDisplay = document.getElementById("playerCount");
 
     const trueBtn = document.getElementById("trueBtn");
     const falseBtn = document.getElementById("falseBtn");
@@ -165,44 +173,97 @@
     let responseTimes = [];
 
     const players = {};
+    let player = null;
+
+    let allReady = false;
 
     socket.on('updatePlayers', (backendPlayers) => {
-      for (const id in backendPlayers){
+      for (const id in backendPlayers) {
         const backendPlayer = backendPlayers[id];
-
-        if (!players[id]){
+        if (!players[id]) {
           players[id] = new Player(backendPlayer.name);
         }
       }
-
       for (const id in players) {
         if (!backendPlayers[id]) {
           delete players[id];
         }
       }
 
-      console.log(players);
+      playerCountDisplay.textContent = `👥 ${Object.keys(backendPlayers).length}`;
+      console.log("GIOCATORI TOTALI: ", Object.keys(backendPlayers).length);
     });
+
+    function syncPlayers() {
+      for (const id in players) {
+        if (!players[id].iniziato) {
+          socket.emit('syncPlayers', players);
+          return true;
+        }
+      }
+    }
 
     startBtn.addEventListener("click", () => {
       const playerName = nameInput.value.trim();
       if (playerName) {
-        players[socket.id] = new Player(playerName);
+        player = new Player(playerName);
+        players[socket.id] = player;
         socket.emit('newPlayer', { id: socket.id, name: playerName });
-        startGame();
+        player.iniziato = true;
+        socket.emit('playerReady');
         nameInput.style.display = "none";
         startBtn.style.display = "none";
+        result.textContent = "In attesa che tutti i giocatori siano pronti...";
+        result.style.color = "#1976d2";
       } else {
-        alert("Per favore, inserisci il tuo nome.");
+        result.textContent = "Per favore, inserisci il tuo nome.";
+        result.style.color = "red";
+      }
+    });
+
+    socket.on('allReady', () => {
+      allReady = true;
+      result.textContent = "Tutti i giocatori sono pronti! Il test inizia.";
+      result.style.color = "green";
+      setTimeout(() => {
+        startGame();
+      }, 1000);
+    });
+
+    socket.on('updatePlayers', (backendPlayers) => {
+      for (const id in backendPlayers) {
+        const backendPlayer = backendPlayers[id];
+        if (!players[id]) {
+          players[id] = new Player(backendPlayer.name);
+        }
+      }
+      for (const id in players) {
+        if (!backendPlayers[id]) {
+          delete players[id];
+        }
+      }
+
+      playerCountDisplay.textContent = `👥 ${Object.keys(backendPlayers).length}`;
+      console.log("GIOCATORI TOTALI: ", Object.keys(backendPlayers).length);
+      if (player && player.iniziato && !allReady) {
+        result.textContent = "In attesa che tutti i giocatori siano pronti...";
+        result.style.color = "#1976d2";
       }
     });
 
     function startGame() {
-      correct = 0;
-      wrong = 0;
-      questionCount = 0;
-      responseTimes = [];
-      finito = false;
+      if (!player || !player.name) {
+        result.textContent = "Devi prima inserire il tuo nome!";
+        result.style.color = "red";
+        return;
+      }
+      
+      player.correctAnswers = 0;
+      player.wrongAnswers = 0;
+      player.questionCount = 0;
+      player.responseTimes = [];
+      player.iniziato = true;
+      player.finito = false;
 
       restartButton.style.display = "none";
       detailedResults.innerHTML = "";
@@ -224,18 +285,18 @@
 
         if (timeLeft <= 0) {
           clearInterval(timerInterval);
-          registerAnswer(false, true); // tempo scaduto = errore automatico
+          registerAnswer(false, true);
         }
       }, 1000);
     }
 
     function nextQuestion() {
-      if (questionCount >= maxQuestions) {
+      if (player.questionCount >= maxQuestions) {
         endGame();
         return;
       }
 
-      questionCount++;
+      player.questionCount++;
       result.textContent = "";
 
       currentWord = colors[Math.floor(Math.random() * colors.length)];
@@ -258,14 +319,14 @@
 
     function registerAnswer(isCorrect, timeout) {
       const timeTaken = Math.min(((Date.now() - questionStartTime) / 1000).toFixed(2), 3.00);
-      responseTimes.push(parseFloat(timeTaken));
+      player.responseTimes.push(parseFloat(timeTaken));
 
       if (isCorrect) {
-        correct++;
+        player.correctAnswers++;
         result.textContent = "✅ Corretto!";
         result.style.color = "green";
       } else {
-        wrong++;
+        player.wrongAnswers++;
         result.textContent = timeout ? "⏱ Tempo scaduto!" : "❌ Sbagliato!";
         result.style.color = "red";
       }
@@ -275,12 +336,15 @@
     }
 
     function updateScore() {
-      score.textContent = `Domande: ${questionCount}/${maxQuestions} | ✅ Corrette: ${correct} | ❌ Sbagliate: ${wrong}`;
+      score.textContent = `Domande: ${player.questionCount}/${maxQuestions} | ✅ Corrette: ${player.correctAnswers} | ❌ Sbagliate: ${player.wrongAnswers}`;
     }
 
     function endGame() {
+      player.finito = true;
+      socket.emit('endGame', player);
+
       wordElement.textContent = "Test completato!";
-      result.textContent = `Hai risposto correttamente a ${correct} su ${maxQuestions}.`;
+      result.textContent = `Hai risposto correttamente a ${player ? player.correctAnswers : 0} su ${maxQuestions}.`;
       result.style.color = "blue";
       timerDisplay.textContent = "";
       trueBtn.disabled = true;
@@ -288,23 +352,31 @@
       restartButton.style.display = "inline-block";
 
       showDetailedResults();
-
-      finito = true;
     }
 
     function showDetailedResults() {
       let html = "<h3>📊 Risultati dettagliati</h3><ul style='list-style:none;padding:0'>";
       let sum = 0;
 
-      responseTimes.forEach((time, index) => {
+      player.responseTimes.forEach((time, index) => {
         html += `<li>Domanda ${index + 1}: ${time}s</li>`;
         sum += time;
       });
 
-      const avg = (sum / responseTimes.length).toFixed(2);
+      const avg = (sum / player.responseTimes.length).toFixed(2);
       html += `</ul><p><strong>⏱ Tempo medio di risposta: ${avg}s</strong></p>`;
       detailedResults.innerHTML = html;
     }
+
+    socket.on('finalRanking', (ranking) => {
+      let html = `<h3>🏆 Classifica Finale</h3><table style='margin:0 auto;border-collapse:collapse;font-size:20px;'>`;
+      html += `<tr><th style='padding:6px 16px;border-bottom:2px solid #2196f3;'>Posizione</th><th style='padding:6px 16px;border-bottom:2px solid #2196f3;'>Nome</th><th style='padding:6px 16px;border-bottom:2px solid #2196f3;'>Corrette</th><th style='padding:6px 16px;border-bottom:2px solid #2196f3;'>Tempo Totale (s)</th></tr>`;
+      ranking.forEach((p, i) => {
+        html += `<tr><td style='padding:4px 12px;text-align:center;'>${i+1}</td><td style='padding:4px 12px;'>${p.name}</td><td style='padding:4px 12px;text-align:center;'>${p.correctAnswers}/${p.responseTimes.length}</td><td style='padding:4px 12px;text-align:center;'>${p.totalTime.toFixed(2)}</td></tr>`;
+      });
+      html += `</table>`;
+      detailedResults.innerHTML += html;
+    });
 
     trueBtn.addEventListener("click", () => handleUserAnswer(true));
     falseBtn.addEventListener("click", () => handleUserAnswer(false));

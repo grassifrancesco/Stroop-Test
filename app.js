@@ -1,45 +1,75 @@
-const express = require('express')
-const app = express()
+const Player = require('./PlayerServer');
 
-const http = require('http')
-const server = http.createServer(app)
-const { Server } = require('socket.io')
-const io = new Server(server)
+const express = require('express');
+const app = express();
 
-const port = 3000
+const http = require('http');
+const { SocketAddress } = require('net');
+const server = http.createServer(app);
+const { Server } = require('socket.io');
+const io = new Server(server);
 
-app.use(express.static('public'))
+const port = 3000;
+
+app.use(express.static('public'));
 
 app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html')
-})
+  res.sendFile(__dirname + '/index.html');
+});
 
-const players = {
-
-}
+const players = {};
+const finishOrder = [];
 
 io.on('connection', (socket) => {
-  console.log('a user connected')
-  players[socket.id] = {
-    score: 0,
-    correct: 0,
-    wrong: 0,
-    questionCount: 0,
-    responseTimes: [],
-    finito: false
-  }
+  console.log(`USER ${socket.id} CONNECTED`);
 
-  io.emit('updatePlayers', players)
+  players[socket.id] = new Player(socket.name);
+  io.emit('updatePlayers', players);
 
   socket.on('disconnect', (reason) => {
-    console.log("user disconnected for reason: ${reason}")
-    delete players[socket.id]
-    io.emit('updatePlayers', players)
-  })
+    console.log(`USER ${socket.id} DISCONNECTED FOR REASON: ${reason}`);
 
-  console.log('Current players:', players)
-})
+    const idx = finishOrder.findIndex(e => e.id === socket.id);
+    if (idx !== -1) {
+      finishOrder.splice(idx, 1);
+    }
+
+    delete players[socket.id];
+    io.emit('updatePlayers', players);
+  });
+
+  socket.on('endGame', (player) => {
+    if (!finishOrder.some(e => e.id === socket.id)) {
+      finishOrder.push({
+        id: socket.id,
+        name: player.name,
+        correctAnswers: player.correctAnswers,
+        responseTimes: player.responseTimes,
+        totalTime: player.responseTimes.reduce((a, b) => a + b, 0)
+      });
+    }
+
+    if (finishOrder.length === Object.keys(players).length) {
+      finishOrder.sort((a, b) => a.totalTime - b.totalTime);
+      io.emit('finalRanking', finishOrder);
+      finishOrder.length = 0;
+    }
+  });
+
+  socket.on('playerReady', () => {
+    if (players[socket.id]) {
+      players[socket.id].iniziato = true;
+
+      const allReady = Object.values(players).length > 0 && Object.values(players).every(p => p.iniziato);
+      if (allReady) {
+        io.emit('allReady');
+      }
+    }
+  });
+
+  console.log('CURRENT PLAYERS:', players);
+});
 
 server.listen(port, () => {
-  console.log('Test app listening on port ${port}')
-})
+  console.log(`APPLICATION LISTENING ON PORT: ${port}`);
+});
