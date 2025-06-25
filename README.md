@@ -18,9 +18,9 @@
 
 OPTIONAL:
 
-you can install nodemon so it's easier to change things while the server is running
-run the command:
+you can install nodemon so it's easier to change things while the server is running,
+just run the command:
   ```
 sudo npm install -g nodemon
 ```
-it will install nodemon globally
+this will install nodemon globally
